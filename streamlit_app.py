@@ -1,6 +1,5 @@
 import streamlit as st
 from supabase import create_client, Client
-import time
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Menadżer Magazynu", layout="centered")
@@ -13,180 +12,142 @@ def init_connection():
         key = st.secrets["SUPABASE_KEY"]
         return create_client(url, key)
     except FileNotFoundError:
-        st.error("❌ Brak pliku `.streamlit/secrets.toml`! Utwórz go i dodaj tam URL oraz KEY.")
+        st.error("❌ Brak pliku .streamlit/secrets.toml")
         st.stop()
     except KeyError:
-        st.error("❌ W pliku secrets brakuje klucza SUPABASE_URL lub SUPABASE_KEY.")
+        st.error("❌ Brak kluczy w secrets.toml")
         st.stop()
 
 supabase = init_connection()
 
-# --- DEFINICJE NAZW TABEL ---
-TABLE_PRODUCTS = "Produkty"   # Zgodnie z Twoim obrazkiem (duża litera)
-TABLE_CATEGORIES = "kategorie" # Zgodnie z Twoim obrazkiem (mała litera)
+# --- NAZWY TABEL ---
+# Używamy małych liter, zgodnie z Twoim ostatnim błędem
+TABLE_PRODUCTS = "produkty"
+TABLE_CATEGORIES = "kategorie"
 
-st.title("📦 Menadżer Produktów i Kategorii")
+st.title("📦 Menadżer Magazynu")
 
-# Tworzymy 4 zakładki (dodano nową: Wydanie z Magazynu)
-tab1, tab2, tab3, tab4 = st.tabs(["➕ Dodaj Kategorię", "➕ Dodaj Produkt", "📉 Wydanie z Magazynu", "📋 Podgląd Bazy"])
+# --- ZAKŁADKI ---
+tab1, tab2, tab3, tab4 = st.tabs(["Kategorie", "Produkty", "Wydanie", "Podgląd"])
 
 # ==========================================
 # ZAKŁADKA 1: DODAWANIE KATEGORII
 # ==========================================
 with tab1:
-    st.header("Nowa Kategoria")
-    with st.form("category_form", clear_on_submit=True):
-        cat_nazwa = st.text_input("Nazwa kategorii (wymagane)")
-        cat_opis = st.text_area("Opis kategorii (opcjonalne)")
-        
-        submitted_cat = st.form_submit_button("Zapisz kategorię")
-        
-        if submitted_cat:
-            if not cat_nazwa:
-                st.warning("⚠️ Nazwa kategorii jest wymagana!")
-            else:
+    st.header("Dodaj Kategorię")
+    with st.form("cat_form", clear_on_submit=True):
+        name = st.text_input("Nazwa")
+        desc = st.text_area("Opis")
+        if st.form_submit_button("Zapisz"):
+            if name:
                 try:
-                    data = {"nazwa": cat_nazwa, "opis": cat_opis}
-                    supabase.table(TABLE_CATEGORIES).insert(data).execute()
-                    st.success(f"✅ Dodano kategorię: {cat_nazwa}")
-                    time.sleep(1)
-                    st.rerun() # Odśwież, aby zaktualizować listy w innych zakładkach
+                    supabase.table(TABLE_CATEGORIES).insert({"nazwa": name, "opis": desc}).execute()
+                    st.success("Zapisano!")
+                    st.rerun() # Odświeżamy stronę natychmiast
                 except Exception as e:
-                    st.error(f"Błąd bazy danych: {e}")
+                    st.error(f"Błąd: {e}")
+            else:
+                st.warning("Podaj nazwę.")
 
 # ==========================================
 # ZAKŁADKA 2: DODAWANIE PRODUKTU
 # ==========================================
 with tab2:
-    st.header("Nowy Produkt")
-
-    # Pobieranie kategorii
-    categories = []
+    st.header("Dodaj Produkt")
+    
+    # Pobranie kategorii
     try:
-        response = supabase.table(TABLE_CATEGORIES).select("id, nazwa").execute()
-        categories = response.data
-    except Exception as e:
-        st.error(f"Nie udało się pobrać kategorii: {e}")
-
-    if not categories:
-        st.warning("👉 Najpierw dodaj kategorię w pierwszej zakładce.")
+        cats = supabase.table(TABLE_CATEGORIES).select("id, nazwa").execute().data
+    except:
+        cats = []
+        
+    if not cats:
+        st.warning("Dodaj najpierw kategorię.")
     else:
-        cat_options = {cat['nazwa']: cat['id'] for cat in categories}
-
-        with st.form("product_form", clear_on_submit=True):
-            prod_nazwa = st.text_input("Nazwa produktu")
-            col1, col2 = st.columns(2)
-            with col1:
-                prod_liczba = st.number_input("Liczba początkowa (sztuki)", min_value=0, step=1)
-            with col2:
-                prod_cena = st.number_input("Cena", min_value=0.0, step=0.01, format="%.2f")
+        cat_map = {c['nazwa']: c['id'] for c in cats}
+        
+        with st.form("prod_form", clear_on_submit=True):
+            p_name = st.text_input("Nazwa produktu")
+            c1, c2 = st.columns(2)
+            p_qty = c1.number_input("Ilość", min_value=0, step=1)
+            p_price = c2.number_input("Cena", min_value=0.0, step=0.01)
+            p_cat = st.selectbox("Kategoria", list(cat_map.keys()))
             
-            selected_cat_name = st.selectbox("Wybierz kategorię", options=list(cat_options.keys()))
-            
-            submitted_prod = st.form_submit_button("Zapisz produkt")
-            
-            if submitted_prod:
-                if not prod_nazwa:
-                    st.warning("⚠️ Nazwa produktu jest wymagana!")
-                else:
+            if st.form_submit_button("Zapisz"):
+                if p_name:
                     try:
-                        selected_cat_id = cat_options[selected_cat_name]
                         data = {
-                            "nazwa": prod_nazwa,
-                            "liczba": prod_liczba,
-                            "cena": prod_cena,
-                            "kategoria": selected_cat_id 
+                            "nazwa": p_name,
+                            "liczba": p_qty,
+                            "cena": p_price,
+                            "kategoria": cat_map[p_cat]
                         }
                         supabase.table(TABLE_PRODUCTS).insert(data).execute()
-                        st.success(f"✅ Dodano produkt: {prod_nazwa}")
-                        time.sleep(1)
+                        st.success("Zapisano!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Błąd zapisu: {e}")
+                        st.error(f"Błąd: {e}")
+                else:
+                    st.warning("Podaj nazwę produktu.")
 
 # ==========================================
-# ZAKŁADKA 3: WYDANIE TOWARU (NOWOŚĆ)
+# ZAKŁADKA 3: WYDANIE (AKTUALIZACJA)
 # ==========================================
 with tab3:
-    st.header("📉 Zmniejsz stan magazynowy")
+    st.header("Wydanie Towaru")
     
-    # 1. Pobieramy listę produktów z aktualnym stanem
     try:
-        res_prod = supabase.table(TABLE_PRODUCTS).select("id, nazwa, liczba").execute()
-        products_list = res_prod.data
-    except Exception as e:
-        st.error("Błąd pobierania produktów.")
-        products_list = []
-
-    if not products_list:
-        st.info("Brak produktów w bazie.")
+        prods = supabase.table(TABLE_PRODUCTS).select("id, nazwa, liczba").execute().data
+    except:
+        prods = []
+        
+    if not prods:
+        st.info("Brak produktów.")
     else:
-        # Tworzymy mapę { "Nazwa (x szt.)": cały_obiekt_produktu }
-        # Dzięki temu w liście rozwijanej widzimy od razu ile jest sztuk
-        prod_options = {f"{p['nazwa']} (Stan: {p['liczba']} szt.)": p for p in products_list}
+        # Lista wyboru z widocznym stanem
+        prod_map = {f"{p['nazwa']} (Stan: {p['liczba']})": p for p in prods}
+        sel_key = st.selectbox("Wybierz produkt", list(prod_map.keys()))
+        sel_prod = prod_map[sel_key]
         
-        selected_option = st.selectbox("Wybierz produkt do wydania", options=list(prod_options.keys()))
-        
-        # Pobieramy wybrany produkt
-        selected_product = prod_options[selected_option]
-        current_stock = selected_product['liczba']
-        product_id = selected_product['id']
-
-        st.write(f"Wybrano: **{selected_product['nazwa']}**")
-        st.write(f"Aktualny stan: **{current_stock}**")
-
-        with st.form("stock_update_form"):
-            remove_amount = st.number_input("Ile sztuk wydać?", min_value=1, step=1)
-            submit_update = st.form_submit_button("Zatwierdź wydanie")
-
-            if submit_update:
-                if remove_amount > current_stock:
-                    st.error(f"❌ Nie możesz wydać {remove_amount} szt., bo na stanie jest tylko {current_stock}!")
-                else:
-                    try:
-                        new_stock = current_stock - remove_amount
-                        # Aktualizacja w bazie
-                        supabase.table(TABLE_PRODUCTS).update({"liczba": new_stock}).eq("id", product_id).execute()
-                        
-                        st.success(f"✅ Wydano {remove_amount} szt. Nowy stan: {new_stock}")
-                        time.sleep(1)
-                        st.rerun() # Odświeżamy stronę
-                    except Exception as e:
-                        st.error(f"Błąd aktualizacji: {e}")
+        with st.form("update_form"):
+            to_remove = st.number_input("Ile wydać?", min_value=1, max_value=sel_prod['liczba'], step=1)
+            
+            if st.form_submit_button("Zatwierdź"):
+                try:
+                    new_qty = sel_prod['liczba'] - to_remove
+                    supabase.table(TABLE_PRODUCTS).update({"liczba": new_qty}).eq("id", sel_prod['id']).execute()
+                    st.success("Zaktualizowano!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Błąd: {e}")
 
 # ==========================================
-# ZAKŁADKA 4: PODGLĄD BAZY
-# ==========================================
+# ZAKŁADKA 4: PODGLĄD
 with tab4:
-    st.subheader("Aktualne stany magazynowe")
-    if st.button("Odśwież tabelę"):
+    st.header("Stan Magazynowy")
+    if st.button("Odśwież"):
         st.rerun()
-
+        
     try:
-        # Próbujemy JOIN (wymaga Foreign Key w Supabase)
-        try:
-            query = f"*, {TABLE_CATEGORIES}(nazwa)"
-            res = supabase.table(TABLE_PRODUCTS).select(query).order('id').execute()
+        # Próba pobrania z nazwą kategorii
+        res = supabase.table(TABLE_PRODUCTS).select(f"*, {TABLE_CATEGORIES}(nazwa)").order('id').execute()
+        
+        # Proste formatowanie danych do listy słowników (Streamlit to wyświetli)
+        display_data = []
+        for item in res.data:
+            # Bezpieczne wyciąganie nazwy kategorii
+            cat_obj = item.get(TABLE_CATEGORIES)
+            cat_name = cat_obj['nazwa'] if cat_obj else "-"
             
-            clean_data = []
-            for item in res.data:
-                cat_info = item.get(TABLE_CATEGORIES)
-                cat_name = cat_info['nazwa'] if cat_info else "---"
-                
-                clean_data.append({
-                    "ID": item['id'],
-                    "Produkt": item['nazwa'],
-                    "Ilość": item['liczba'],
-                    "Cena": f"{item['cena']} PLN",
-                    "Kategoria": cat_name
-                })
-            st.dataframe(clean_data, use_container_width=True)
+            display_data.append({
+                "ID": item['id'],
+                "Produkt": item['nazwa'],
+                "Ilość": item['liczba'],
+                "Cena": item['cena'],
+                "Kategoria": cat_name
+            })
             
-        except Exception:
-            # Fallback (gdy brak relacji FK)
-            st.warning("⚠️ Pokazuję surowe dane (brak relacji FK w bazie).")
-            res = supabase.table(TABLE_PRODUCTS).select("*").order('id').execute()
-            st.dataframe(res.data, use_container_width=True)
-
+        st.dataframe(display_data, use_container_width=True)
+        
     except Exception as e:
-        st.error(f"Wystąpił błąd ogólny: {e}")
+        st.error(f"Błąd pobierania danych: {e}")
